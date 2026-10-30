@@ -323,3 +323,231 @@ export const PRESET_SCENARIOS: PresetScenario[] = [
     `),
   },
 ];
+
+export const TRANSFORM_PRESETS: {
+  id: string;
+  title: string;
+  category: string;
+  shortDesc: string;
+  userRequest: string;
+  imageSvg: string;
+  suggestedRefinements: string[];
+}[] = [
+  {
+    id: 'transform-tv-credenza',
+    title: 'Living Room TV & Credenza Display',
+    category: 'Living Room & Decor',
+    shortDesc: 'TV credenza with overlapping souvenirs, medals, tangled cables, and mismatched plants.',
+    userRequest: 'Rearrange the decorations to make it cleaner, more balanced, and reduce the visual clutter.',
+    suggestedRefinements: [
+      'Make it more minimal with only 1 plant and no awards.',
+      'Group the small items on a decorative tray on the left.',
+      'Keep the flowers where they are but rearrange everything else.',
+    ],
+    imageSvg: createSvgDataUri(`
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" width="800" height="600">
+        <defs>
+          <linearGradient id="wallBg" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#2a2e39"/>
+            <stop offset="100%" stop-color="#181b22"/>
+          </linearGradient>
+          <linearGradient id="woodCredenza" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stop-color="#8d5b36"/>
+            <stop offset="50%" stop-color="#a4693f"/>
+            <stop offset="100%" stop-color="#734727"/>
+          </linearGradient>
+        </defs>
+        <!-- Room Wall & Baseboard -->
+        <rect width="800" height="600" fill="url(#wallBg)"/>
+        <rect x="0" y="520" width="800" height="80" fill="#111317"/>
+        <line x1="0" y1="520" x2="800" y2="520" stroke="#373d4d" stroke-width="4"/>
+
+        <!-- Wall TV Display in center -->
+        <rect x="220" y="70" width="360" height="210" rx="6" fill="#090a0d" stroke="#4a5568" stroke-width="6"/>
+        <rect x="235" y="85" width="330" height="180" fill="#1a202c"/>
+        <text x="320" y="180" fill="#4a5568" font-family="sans-serif" font-size="14" font-weight="bold">OLED TV (WALL MOUNTED)</text>
+
+        <!-- Wooden Credenza Furniture -->
+        <rect x="100" y="340" width="600" height="170" rx="8" fill="url(#woodCredenza)" stroke="#523218" stroke-width="3"/>
+        <line x1="300" y1="350" x2="300" y2="500" stroke="#523218" stroke-width="2"/>
+        <line x1="500" y1="350" x2="500" y2="500" stroke="#523218" stroke-width="2"/>
+        <!-- Credenza legs -->
+        <rect x="130" y="510" width="16" height="30" fill="#2d1b0c"/>
+        <rect x="654" y="510" width="16" height="30" fill="#2d1b0c"/>
+
+        <!-- Cluttered decorations ON the credenza surface (Y: 270-340) -->
+        <!-- Tangled wires under TV -->
+        <path d="M 400 280 Q 370 330 380 340 T 420 345 T 450 338" fill="none" stroke="#2d3748" stroke-width="4"/>
+        <path d="M 390 280 Q 420 320 405 342" fill="none" stroke="#4a5568" stroke-width="3"/>
+
+        <!-- Left side clutter: 3 mismatched trophies & stacked books -->
+        <polygon points="130,340 145,280 160,340" fill="#d97706" stroke="#b45309" stroke-width="2"/>
+        <circle cx="145" cy="275" r="12" fill="#fbbf24"/>
+        <polygon points="170,340 182,295 194,340" fill="#cbd5e1" stroke="#94a3b8" stroke-width="2"/>
+        <rect x="210" y="315" width="65" height="25" rx="3" fill="#3b82f6" transform="rotate(-6 210 315)"/>
+        <rect x="205" y="300" width="60" height="20" rx="3" fill="#ef4444" transform="rotate(4 205 300)"/>
+
+        <!-- Center: flower vase blocking TV bottom edge -->
+        <rect x="365" y="270" width="35" height="70" rx="6" fill="#f8fafc" stroke="#94a3b8" stroke-width="2"/>
+        <circle cx="370" cy="250" r="16" fill="#f43f5e"/>
+        <circle cx="395" cy="245" r="18" fill="#fb7185"/>
+        <circle cx="382" cy="230" r="14" fill="#fda4af"/>
+        <text x="310" y="260" fill="#f87171" font-family="sans-serif" font-size="10" font-weight="bold">⚠️ BLOCKS SCREEN</text>
+
+        <!-- Right side clutter: 2 plants overlapping, random gaming controller & mug -->
+        <ellipse cx="560" cy="335" rx="28" ry="10" fill="#92400e"/>
+        <path d="M 545 330 Q 520 280 500 290 Q 535 310 545 330" fill="#15803d"/>
+        <path d="M 565 330 Q 575 270 595 285 Q 575 310 565 330" fill="#16a34a"/>
+        <!-- Second plant overlapping -->
+        <rect x="610" y="290" width="40" height="50" rx="4" fill="#e2e8f0"/>
+        <circle cx="630" cy="275" r="22" fill="#22c55e"/>
+        <!-- Loose coffee mug & loose game controller -->
+        <rect x="470" y="320" width="22" height="20" rx="3" fill="#ffffff"/>
+        <rect x="500" y="325" width="35" height="15" rx="4" fill="#1e293b"/>
+      </svg>
+    `),
+  },
+  {
+    id: 'transform-cluttered-desk',
+    title: 'Cluttered Work & Study Desk',
+    category: 'Home Office & Study',
+    shortDesc: 'Desk surface crowded with scattered papers, loose cables, mugs, stationery, and off-center screen.',
+    userRequest: 'Organize the desk into a clean, minimalist setup with tucked cables and maximized work surface.',
+    suggestedRefinements: [
+      'Create a minimalist arrangement with only the laptop and a warm lamp.',
+      'Keep the mechanical keyboard and mouse, but tuck all cables.',
+      'Make the desk look more spacious and open.',
+    ],
+    imageSvg: createSvgDataUri(`
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" width="800" height="600">
+        <rect width="800" height="600" fill="#1e222a"/>
+        <!-- Window on left -->
+        <rect x="40" y="40" width="160" height="240" rx="6" fill="#2d3748" stroke="#4a5568" stroke-width="4"/>
+        <line x1="120" y1="40" x2="120" y2="280" stroke="#4a5568" stroke-width="3"/>
+        <line x1="40" y1="160" x2="200" y2="160" stroke="#4a5568" stroke-width="3"/>
+
+        <!-- Desk Surface -->
+        <polygon points="60,320 740,320 780,540 20,540" fill="#cbd5e1" stroke="#94a3b8" stroke-width="3"/>
+
+        <!-- Monitor placed crookedly to the right -->
+        <rect x="420" y="110" width="280" height="180" rx="8" fill="#0f172a" stroke="#334155" stroke-width="4" transform="rotate(-3 560 200)"/>
+        <rect x="545" y="285" width="30" height="45" fill="#475569"/>
+        <ellipse cx="560" cy="330" rx="45" ry="12" fill="#334155"/>
+
+        <!-- Desk Clutter: Loose papers, tangled wires, pen holder knocked over, mugs -->
+        <!-- Tangled cables across center -->
+        <path d="M 540 310 C 450 380, 480 440, 360 410 C 260 380, 290 460, 200 480" fill="none" stroke="#eab308" stroke-width="5"/>
+        <path d="M 560 320 C 500 400, 380 430, 420 500" fill="none" stroke="#ef4444" stroke-width="3"/>
+
+        <!-- Scattered documents -->
+        <rect x="180" y="360" width="110" height="130" fill="#ffffff" stroke="#cbd5e1" transform="rotate(-15 180 360)"/>
+        <rect x="230" y="380" width="100" height="120" fill="#f8fafc" stroke="#cbd5e1" transform="rotate(8 230 380)"/>
+        <rect x="280" y="370" width="120" height="90" fill="#fef08a" stroke="#eab308" transform="rotate(22 280 370)"/>
+
+        <!-- Knocked pens & sticky notes -->
+        <line x1="130" y1="440" x2="175" y2="470" stroke="#3b82f6" stroke-width="5" stroke-linecap="round"/>
+        <line x1="140" y1="470" x2="190" y2="455" stroke="#ef4444" stroke-width="5" stroke-linecap="round"/>
+
+        <!-- Two coffee mugs with stains -->
+        <circle cx="390" cy="460" r="18" fill="#e2e8f0" stroke="#94a3b8" stroke-width="2"/>
+        <circle cx="390" cy="460" r="14" fill="#78350f"/>
+        <circle cx="430" cy="445" r="16" fill="#f1f5f9" stroke="#94a3b8" stroke-width="2"/>
+        
+        <!-- Laptop pushed to the left edge awkwardly -->
+        <rect x="80" y="330" width="140" height="95" rx="4" fill="#64748b" transform="rotate(12 80 330)"/>
+      </svg>
+    `),
+  },
+  {
+    id: 'transform-bookshelf',
+    title: 'Overcrowded Bookshelf & Library Unit',
+    category: 'Storage & Bookshelves',
+    shortDesc: 'Shelves jammed with slanting book piles, stuffed documents, fallen frames, and visual imbalance.',
+    userRequest: 'Make the bookshelf more organized, group items with breathing room, and create an aesthetic rhythm.',
+    suggestedRefinements: [
+      'Organize books by vertical color groups.',
+      'Dedicate the middle shelf to art objects and plants with negative space.',
+      'Remove all paper clutter and folders to lower storage boxes.',
+    ],
+    imageSvg: createSvgDataUri(`
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" width="800" height="600">
+        <rect width="800" height="600" fill="#18181b"/>
+        <!-- Main wooden bookshelf frame -->
+        <rect x="120" y="40" width="560" height="520" rx="8" fill="#27272a" stroke="#52525b" stroke-width="6"/>
+        <!-- Shelf 1, 2, 3 dividers -->
+        <line x1="120" y1="180" x2="680" y2="180" stroke="#52525b" stroke-width="8"/>
+        <line x1="120" y1="330" x2="680" y2="330" stroke="#52525b" stroke-width="8"/>
+        <line x1="120" y1="460" x2="680" y2="460" stroke="#52525b" stroke-width="8"/>
+
+        <!-- Shelf 1 (Top): Overstuffed books leaning dangerously -->
+        <rect x="150" y="70" width="22" height="106" fill="#dc2626"/>
+        <rect x="174" y="65" width="24" height="111" fill="#ea580c"/>
+        <rect x="200" y="75" width="20" height="101" fill="#ca8a04"/>
+        <rect x="222" y="80" width="30" height="96" fill="#16a34a" transform="rotate(14 222 176)"/>
+        <rect x="260" y="90" width="25" height="86" fill="#2563eb" transform="rotate(22 260 176)"/>
+        <text x="320" y="110" fill="#f87171" font-family="sans-serif" font-size="11" font-weight="bold">⚠️ DANGEROUS LEAN</text>
+
+        <!-- Shelf 1 Right: Piles of horizontal books shoved in -->
+        <rect x="480" y="145" width="160" height="30" rx="3" fill="#3b82f6"/>
+        <rect x="490" y="118" width="140" height="25" rx="3" fill="#8b5cf6"/>
+        <rect x="505" y="95" width="120" height="22" rx="3" fill="#ec4899"/>
+        <rect x="520" y="75" width="90" height="18" rx="3" fill="#10b981"/>
+
+        <!-- Shelf 2 (Middle): Crooked photo frame & tangled power cord -->
+        <rect x="180" y="210" width="90" height="110" rx="4" fill="#3f3f46" stroke="#fbbf24" stroke-width="3" transform="rotate(-18 180 210)"/>
+        <path d="M 320 326 C 360 270, 420 340, 480 280 C 510 250, 560 330, 620 326" fill="none" stroke="#f59e0b" stroke-width="4"/>
+
+        <!-- Shelf 3: Scattered folders & magazines hanging off edge -->
+        <rect x="160" y="360" width="70" height="95" fill="#f43f5e" transform="rotate(8 160 360)"/>
+        <rect x="240" y="355" width="80" height="100" fill="#0284c7" transform="rotate(-6 240 355)"/>
+        <rect x="440" y="390" width="200" height="65" rx="4" fill="#a1a1aa"/>
+        <rect x="420" y="420" width="140" height="55" rx="3" fill="#e4e4e7" transform="rotate(5 420 420)"/>
+      </svg>
+    `),
+  },
+  {
+    id: 'transform-kitchen-island',
+    title: 'Kitchen Prep Island & Counter',
+    category: 'Kitchen & Dining',
+    shortDesc: 'Kitchen island crowded with bulky appliances, unorganized condiments, open cereal boxes, and cutting boards.',
+    userRequest: 'Clear the main prep counter, group cooking oils onto a tray, and create a clean spacious aesthetic.',
+    suggestedRefinements: [
+      'Store bulky blender into cabinetry to clear counter space.',
+      'Create a dedicated fruit and condiment focal point on the left.',
+      'Make the kitchen look more spacious and inviting.',
+    ],
+    imageSvg: createSvgDataUri(`
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" width="800" height="600">
+        <rect width="800" height="600" fill="#1c1917"/>
+        <!-- Kitchen tiled backsplash -->
+        <rect x="0" y="0" width="800" height="300" fill="#292524"/>
+        <line x1="0" y1="100" x2="800" y2="100" stroke="#44403c" stroke-width="2"/>
+        <line x1="0" y1="200" x2="800" y2="200" stroke="#44403c" stroke-width="2"/>
+
+        <!-- Marble Countertop Surface -->
+        <polygon points="40,290 760,290 800,530 0,530" fill="#e7e5e4" stroke="#a8a29e" stroke-width="3"/>
+        <rect x="0" y="530" width="800" height="70" fill="#0c0a09"/>
+
+        <!-- Counter clutter -->
+        <!-- Giant blender right in center -->
+        <rect x="360" y="160" width="70" height="110" rx="8" fill="#44403c" stroke="#78716c" stroke-width="2"/>
+        <rect x="345" y="270" width="100" height="60" rx="10" fill="#1c1917" stroke="#78716c" stroke-width="3"/>
+
+        <!-- Multiple cutting boards lying flat eating space -->
+        <rect x="180" y="330" width="160" height="110" rx="6" fill="#b45309" stroke="#78350f" stroke-width="2" transform="rotate(-12 180 330)"/>
+        
+        <!-- Random jars & bottles scattered -->
+        <rect x="100" y="320" width="30" height="70" rx="4" fill="#15803d"/>
+        <rect x="135" y="340" width="25" height="55" rx="4" fill="#b91c1c"/>
+        <rect x="480" y="320" width="35" height="75" rx="5" fill="#ca8a04"/>
+        <rect x="525" y="335" width="28" height="65" rx="4" fill="#0284c7"/>
+        <circle cx="580" cy="355" r="22" fill="#f59e0b"/>
+        <circle cx="615" cy="370" r="18" fill="#ea580c"/>
+        <!-- Open bread bag & toaster with cord hanging -->
+        <rect x="620" y="220" width="110" height="85" rx="6" fill="#78716c"/>
+        <path d="M 640 305 Q 610 380 670 410" fill="none" stroke="#000000" stroke-width="4"/>
+      </svg>
+    `),
+  },
+];
+

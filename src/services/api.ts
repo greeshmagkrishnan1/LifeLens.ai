@@ -1,9 +1,22 @@
-import { SituationAnalysis, ChatMessage } from '../types/analysis';
+import { SituationAnalysis, ChatMessage, TransformationResult } from '../types/analysis';
 
 export interface AnalyzeRequest {
   imageBase64: string;
   mimeType: string;
   userFocus?: string;
+}
+
+export interface TransformRequest {
+  imageBase64: string;
+  mimeType: string;
+  userRequest: string;
+  version?: number;
+  variationDirection?: string;
+  previousContext?: {
+    userRequest: string;
+    previousWhatChanged?: string[];
+    version?: number;
+  };
 }
 
 export class AnalysisService {
@@ -57,6 +70,23 @@ export class AnalysisService {
 
     const data = await this.parseResponse(response, 'Failed to analyze situation');
     return data as SituationAnalysis;
+  }
+
+  /**
+   * V2 Vision → Transform: Sends image and requested spatial/visual changes to Gemini.
+   */
+  static async transformVision(req: TransformRequest): Promise<TransformationResult> {
+    const response = await fetch('/api/transform', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'same-origin',
+      body: JSON.stringify(req),
+    });
+
+    const data = await this.parseResponse(response, 'Failed to generate visual transformation');
+    return data as TransformationResult;
   }
 
   /**

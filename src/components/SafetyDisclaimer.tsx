@@ -11,15 +11,15 @@ export const SafetyDisclaimer: React.FC = () => {
         </div>
 
         <p className="leading-relaxed text-[11px] text-slate-500 max-w-3xl mx-auto">
-          LifeLens AI is an automated situational reasoning prototype designed to assist observational awareness. It does not provide certified medical, legal, structural engineering, architectural, financial, or emergency services advice. Always exercise personal caution, prioritize safe physical distancing from potential hazards, and consult licensed technicians or emergency responders for critical situations.
+          LifeLens AI is an automated situational intelligence and visual transformation prototype. It does not provide certified medical, legal, structural engineering, architectural, or emergency services advice. For visual transformations, always verify physical feasibility, furniture weight limits, and electrical cable safety before moving heavy items.
         </p>
 
         <div className="pt-2 flex flex-wrap items-center justify-center gap-4 text-[11px] text-slate-600">
-          <span>LifeLens AI V1.0</span>
+          <span>LifeLens AI V2.0</span>
+          <span>•</span>
+          <span>Analyze & Vision → Transform</span>
           <span>•</span>
           <span>“See it. Understand it. Act on it.”</span>
-          <span>•</span>
-          <span>Multimodal Pipeline Architecture</span>
         </div>
       </div>
     </footer>

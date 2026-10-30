@@ -1,6 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { Upload, Camera, Image as ImageIcon, X, Sparkles, HelpCircle, ArrowRight } from 'lucide-react';
 import { AnalysisService } from '../services/api';
+import { CameraCaptureModal } from './CameraCaptureModal';
 
 interface ImageUploaderProps {
   onAnalyze: (imageBase64: string, mimeType: string, userFocus?: string) => void;
@@ -18,7 +19,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
   onSelectImage,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [userFocus, setUserFocus] = useState('');
   const [imageMeta, setImageMeta] = useState<{ name?: string; size?: string; mimeType: string }>({
@@ -62,6 +63,19 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
     }
   };
 
+  const handleUseCameraPhoto = (base64: string, mimeType: string, autoAnalyze: boolean = false) => {
+    setImageMeta({
+      name: 'camera-capture.jpg',
+      size: 'Live Capture',
+      mimeType,
+    });
+    onSelectImage(base64, mimeType, 'camera-capture.jpg');
+
+    if (autoAnalyze) {
+      onAnalyze(base64, mimeType, userFocus.trim() || undefined);
+    }
+  };
+
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(true);
@@ -87,7 +101,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
 
   return (
     <div className="w-full">
-      {/* Hidden file inputs */}
+      {/* File input for device upload */}
       <input
         ref={fileInputRef}
         type="file"
@@ -99,16 +113,15 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
           }
         }}
       />
-      <input
-        ref={cameraInputRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        className="hidden"
-        onChange={(e) => {
-          if (e.target.files && e.target.files[0]) {
-            handleFile(e.target.files[0]);
-          }
+
+      {/* Live Camera Viewfinder Modal */}
+      <CameraCaptureModal
+        isOpen={isCameraModalOpen}
+        onClose={() => setIsCameraModalOpen(false)}
+        onUsePhoto={handleUseCameraPhoto}
+        onFallbackUpload={() => {
+          setIsCameraModalOpen(false);
+          fileInputRef.current?.click();
         }}
       />
 
@@ -160,8 +173,8 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
 
               <button
                 type="button"
-                onClick={() => cameraInputRef.current?.click()}
-                className="px-4 py-2.5 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-200 text-sm font-semibold border border-slate-700 hover:border-slate-600 transition-all flex items-center space-x-2"
+                onClick={() => setIsCameraModalOpen(true)}
+                className="px-4 py-2.5 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-200 text-sm font-semibold border border-slate-700 hover:border-slate-600 transition-all flex items-center space-x-2 shadow-sm"
               >
                 <Camera className="w-4 h-4 text-cyan-400" />
                 <span>Take Photo</span>
