@@ -43,6 +43,9 @@ export default function App() {
 
   // V2 Vision Transform state
   const [transformationResult, setTransformationResult] = useState<TransformationResult | null>(null);
+  const [transformationHistory, setTransformationHistory] = useState<TransformationResult[]>([]);
+  const [activeVersionIndex, setActiveVersionIndex] = useState<number>(0);
+  const [originalTransformRequest, setOriginalTransformRequest] = useState<string>('');
   const [activeTransformPreset, setActiveTransformPreset] = useState<TransformPreset | null>(null);
   const [lastTransformRequest, setLastTransformRequest] = useState<string | undefined>(undefined);
 
@@ -73,6 +76,9 @@ export default function App() {
     setImageFileName(fileName);
     setAnalysisResult(null);
     setTransformationResult(null);
+    setTransformationHistory([]);
+    setActiveVersionIndex(0);
+    setOriginalTransformRequest('');
     setErrorMessage(null);
     setActiveScenario(null);
     setActiveTransformPreset(null);
@@ -84,6 +90,9 @@ export default function App() {
     setImageFileName(undefined);
     setAnalysisResult(null);
     setTransformationResult(null);
+    setTransformationHistory([]);
+    setActiveVersionIndex(0);
+    setOriginalTransformRequest('');
     setErrorMessage(null);
     setActiveScenario(null);
     setActiveTransformPreset(null);
@@ -152,11 +161,20 @@ export default function App() {
 
     setIsLoading(true);
     setErrorMessage(null);
-    setLastTransformRequest(userRequest);
 
-    // Calculate target version number
+    // Maintain consistent initial user request across versions unless refining
+    const effectiveRequest = isNextVersion
+      ? originalTransformRequest || userRequest
+      : userRequest;
+
+    if (!isNextVersion && !isRefinement) {
+      setOriginalTransformRequest(userRequest);
+    }
+    setLastTransformRequest(effectiveRequest);
+
+    // Calculate target version number from history
     const nextVersionNumber = isNextVersion
-      ? (transformationResult?.version || 1) + 1
+      ? transformationHistory.length + 1
       : isRefinement
       ? transformationResult?.version || 1
       : 1;
@@ -174,7 +192,7 @@ export default function App() {
       const result = await AnalysisService.transformVision({
         imageBase64: finalBase64,
         mimeType: finalMime,
-        userRequest,
+        userRequest: effectiveRequest,
         version: nextVersionNumber,
         previousContext: (isRefinement || isNextVersion) && transformationResult ? {
           userRequest: transformationResult.userRequest,
@@ -183,7 +201,53 @@ export default function App() {
         } : undefined,
       });
 
-      setTransformationResult(result);
+      // Strict Validation: A new transformation MUST NOT return an empty or broken image
+      if (!result.transformedImage || typeof result.transformedImage !== 'string' || result.transformedImage.trim().length < 100) {
+        throw new Error('Transformation returned invalid or empty image data.');
+      }
+
+      // Strict Validation: Transformed image MUST NOT be identical to the original image
+      if (result.transformedImage === selectedImage || result.transformedImage === finalBase64) {
+        throw new Error('Transformation returned an image identical to the original scene. Please try another request.');
+      }
+
+      // Pre-load the generated image to guarantee browser can display it before saving to history
+      await new Promise<void>((resolve, reject) => {
+        const testImg = new Image();
+        testImg.onload = () => {
+          if (testImg.naturalWidth === 0 || testImg.naturalHeight === 0) {
+            reject(new Error('Generated transformation image has zero dimensions.'));
+          } else {
+            resolve();
+          }
+        };
+        testImg.onerror = () => {
+          reject(new Error('Failed to load or render the generated transformation image.'));
+        };
+        testImg.src = result.transformedImage;
+      });
+
+      if (isNextVersion) {
+        // Append new version to history without overwriting previous versions
+        setTransformationHistory((prev) => {
+          const updated = [...prev, result];
+          setActiveVersionIndex(updated.length - 1);
+          return updated;
+        });
+        setTransformationResult(result);
+      } else if (isRefinement) {
+        setTransformationHistory((prev) => {
+          const updated = [...prev, result];
+          setActiveVersionIndex(updated.length - 1);
+          return updated;
+        });
+        setTransformationResult(result);
+      } else {
+        // Initial transformation for this session
+        setTransformationHistory([result]);
+        setActiveVersionIndex(0);
+        setTransformationResult(result);
+      }
     } catch (err: any) {
       console.error('Transformation error:', err);
       setErrorMessage(
@@ -194,12 +258,23 @@ export default function App() {
     }
   };
 
+  // Instant selection of already-generated version with zero network regeneration
+  const handleSelectHistoryVersion = (index: number) => {
+    if (index >= 0 && index < transformationHistory.length) {
+      setActiveVersionIndex(index);
+      setTransformationResult(transformationHistory[index]);
+    }
+  };
+
   const handleSelectTransformPreset = async (preset: TransformPreset, autoTransform: boolean = false) => {
     setActiveTransformPreset(preset);
     setSelectedImage(preset.imageSvg);
     setImageMimeType('image/png');
     setImageFileName(`${preset.id}.png`);
     setTransformationResult(null);
+    setTransformationHistory([]);
+    setActiveVersionIndex(0);
+    setOriginalTransformRequest(preset.userRequest);
     setAnalysisResult(null);
     setErrorMessage(null);
 
@@ -214,6 +289,8 @@ export default function App() {
           version: 1,
         });
         setTransformationResult(result);
+        setTransformationHistory([result]);
+        setActiveVersionIndex(0);
       } catch (err: any) {
         console.error('Preset transformation error:', err);
         setErrorMessage(err?.message || 'Failed to transform preset scenario.');
@@ -360,11 +437,14 @@ export default function App() {
               </div>
             )}
 
-            {/* If image is selected: show TransformView (Prompt form + Before/After result) */}
+            {/* If image is selected: show TransformView (Prompt form + Before/After result + History) */}
             {selectedImage && (
               <TransformView
                 originalImage={selectedImage}
                 transformationResult={transformationResult}
+                history={transformationHistory}
+                activeVersionIndex={activeVersionIndex}
+                onSelectVersion={handleSelectHistoryVersion}
                 isLoading={isLoading}
                 onTransform={handleTransform}
                 onReset={handleClearImage}

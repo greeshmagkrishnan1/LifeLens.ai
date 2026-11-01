@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { Columns, SplitSquareVertical } from 'lucide-react';
+import { Columns, SplitSquareVertical, AlertTriangle } from 'lucide-react';
 
 interface ImageComparisonProps {
   beforeImage: string;
@@ -26,7 +26,8 @@ export const ImageComparison: React.FC<ImageComparisonProps> = ({
     setAfterLoadFailed(false);
   }, [afterImage]);
 
-  const displayAfterImage = afterLoadFailed ? beforeImage : afterImage;
+  // NEVER silently fall back to beforeImage; transformed side must show the actual transformed image or an explicit error
+  const displayAfterImage = afterImage;
 
   const handleMove = useCallback((clientX: number) => {
     if (!containerRef.current) return;
@@ -105,13 +106,27 @@ export const ImageComparison: React.FC<ImageComparisonProps> = ({
           className="relative w-full aspect-16/10 sm:aspect-16/9 rounded-2xl overflow-hidden select-none cursor-ew-resize bg-slate-950 border border-slate-800 shadow-2xl"
         >
           {/* After Image (Background full) */}
-          <img
-            src={displayAfterImage}
-            alt="Transformed result"
-            onError={() => setAfterLoadFailed(true)}
-            className="absolute inset-0 w-full h-full object-contain pointer-events-none"
-            draggable={false}
-          />
+          {afterLoadFailed ? (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950 p-6 text-center space-y-3">
+              <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div className="space-y-1">
+                <h4 className="text-sm font-bold text-white">Transformed Image Failed to Render</h4>
+                <p className="text-xs text-slate-400 max-w-sm">
+                  The generated transformation data could not be displayed. Please click "Try Another Version".
+                </p>
+              </div>
+            </div>
+          ) : (
+            <img
+              src={displayAfterImage}
+              alt="Transformed result"
+              onError={() => setAfterLoadFailed(true)}
+              className="absolute inset-0 w-full h-full object-contain pointer-events-none"
+              draggable={false}
+            />
+          )}
           <div className="absolute top-3 right-3 px-2.5 py-1 rounded-lg bg-violet-950/80 backdrop-blur-md text-violet-300 border border-violet-500/40 text-[11px] font-bold tracking-wider z-10 pointer-events-none">
             {afterLabel}
           </div>
@@ -178,12 +193,20 @@ export const ImageComparison: React.FC<ImageComparisonProps> = ({
               <span className="text-[10px] text-violet-400/80 font-normal">Proposed Transformation</span>
             </div>
             <div className="relative aspect-4/3 rounded-2xl overflow-hidden bg-slate-950 border border-violet-500/40 flex items-center justify-center p-2 shadow-lg shadow-violet-500/10">
-              <img
-                src={displayAfterImage}
-                alt="After transformation"
-                onError={() => setAfterLoadFailed(true)}
-                className="w-full h-full object-contain rounded-xl"
-              />
+              {afterLoadFailed ? (
+                <div className="flex flex-col items-center justify-center p-6 text-center space-y-2">
+                  <AlertTriangle className="w-8 h-8 text-rose-400" />
+                  <p className="text-xs text-white font-bold">Failed to load transformed image</p>
+                  <p className="text-[11px] text-slate-400">The generated image data is invalid.</p>
+                </div>
+              ) : (
+                <img
+                  src={displayAfterImage}
+                  alt="After transformation"
+                  onError={() => setAfterLoadFailed(true)}
+                  className="w-full h-full object-contain rounded-xl"
+                />
+              )}
             </div>
           </div>
         </div>

@@ -19,7 +19,45 @@ export interface TransformRequest {
   };
 }
 
+export interface TransformSuggestionsResponse {
+  environmentType: string;
+  mainSubject: string;
+  suggestions: string[];
+}
+
 export class AnalysisService {
+  /**
+   * V2 Vision → Transform Suggestions: Requests 5-7 scene-aware transformation prompts for the uploaded image.
+   */
+  static async getTransformSuggestions(req: {
+    imageBase64: string;
+    mimeType?: string;
+  }): Promise<TransformSuggestionsResponse> {
+    let finalBase64 = req.imageBase64;
+    let finalMime = req.mimeType || 'image/jpeg';
+
+    if (req.imageBase64.startsWith('data:image/svg+xml')) {
+      const raster = await this.svgToPngBase64(req.imageBase64);
+      finalBase64 = raster.base64;
+      finalMime = raster.mimeType;
+    }
+
+    const response = await fetch('/api/transform/suggestions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'same-origin',
+      body: JSON.stringify({
+        imageBase64: finalBase64,
+        mimeType: finalMime,
+      }),
+    });
+
+    const data = await this.parseResponse(response, 'Failed to generate transformation suggestions');
+    return data as TransformSuggestionsResponse;
+  }
+
   /**
    * Safely parses response from the server, handling JSON or unexpected HTML/text
    */

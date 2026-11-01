@@ -25,12 +25,11 @@ const ai = new GoogleGenAI({
   },
 });
 
-// Define the 5 high-fidelity AI-generated variation directions
+// Define the 5 variation styling directions
 export interface VariationDirectionConfig {
   version: number;
   name: string;
   aesthetic: string;
-  imageFileName: string;
 }
 
 const VARIATION_DIRECTIONS: VariationDirectionConfig[] = [
@@ -38,48 +37,121 @@ const VARIATION_DIRECTIONS: VariationDirectionConfig[] = [
     version: 1,
     name: 'Modern elegant / warm contemporary',
     aesthetic: 'Warm amber backlight illumination, rich natural walnut cabinetry, curated minimalist ceramics, subtle indoor botanical greenery, elegant earth tones',
-    imageFileName: 'transformed_showcase_1793368594980.jpg',
   },
   {
     version: 2,
     name: 'Minimalist / clean / spacious',
     aesthetic: 'Light natural oak floating shelves, airy negative space, pale limestone plaster surfaces, single sculptural vessel, soft indirect illumination, calm uncluttered serenity',
-    imageFileName: 'showcase_v2_minimal_1793373366912.jpg',
   },
   {
     version: 3,
     name: 'Luxury contemporary / premium materials',
     aesthetic: 'Dark smoked walnut fluted cabinetry, polished Nero Marquina marble top, brushed bronze hardware accents, curated art books, dramatic ambient mood lighting',
-    imageFileName: 'showcase_v3_luxury_1793373380360.jpg',
   },
   {
     version: 4,
     name: 'Scandinavian-inspired / bright / natural',
     aesthetic: 'Blonde birch woods, lush trailing indoor plants and terracotta planters, ribbed ceramic craft vases, bright natural daylight, cozy modern hygge aesthetic',
-    imageFileName: 'showcase_v4_scandi_1793373393814.jpg',
   },
   {
     version: 5,
     name: 'Modern artistic / sophisticated / statement decor',
     aesthetic: 'Matte charcoal architecture, sculptural bronze geometric piece, curated monochrome ceramics, gallery track spotlighting, statement museum-quality composition',
-    imageFileName: 'showcase_v5_artistic_1793373407955.jpg',
   },
 ];
 
-// Pre-load all AI-generated showcase transformation assets
-const CACHED_SHOWCASE_AI_IMAGES: Record<number, string> = {};
-const ASSETS_IMAGES_DIR = path.resolve(process.cwd(), 'src/assets/images');
-
-for (const dir of VARIATION_DIRECTIONS) {
+// Helper to detect image aspect ratio from raw image buffer
+function detectImageAspectRatio(buffer: Buffer): '1:1' | '3:4' | '4:3' | '9:16' | '16:9' | undefined {
   try {
-    const fullPath = path.join(ASSETS_IMAGES_DIR, dir.imageFileName);
-    if (fs.existsSync(fullPath)) {
-      const fileBuffer = fs.readFileSync(fullPath);
-      CACHED_SHOWCASE_AI_IMAGES[dir.version] = `data:image/jpeg;base64,${fileBuffer.toString('base64')}`;
+    let width = 0;
+    let height = 0;
+
+    // PNG: signature 0x89 0x50 0x4E 0x47 0x0D 0x0A 0x1A 0x0A
+    if (buffer.length >= 24 && buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) {
+      width = buffer.readUInt32BE(16);
+      height = buffer.readUInt32BE(20);
     }
-  } catch (e) {
-    console.warn(`Could not preload ${dir.imageFileName}:`, e);
+    // JPEG: SOI marker 0xFF 0xD8
+    else if (buffer.length > 4 && buffer[0] === 0xff && buffer[1] === 0xd8) {
+      let offset = 2;
+      while (offset < buffer.length - 8) {
+        if (buffer[offset] !== 0xff) {
+          offset++;
+          continue;
+        }
+        const marker = buffer[offset + 1];
+        // SOF markers: SOF0 to SOF3, SOF5 to SOF7, SOF9 to SOF11, SOF13 to SOF15
+        if (
+          (marker >= 0xc0 && marker <= 0xc3) ||
+          (marker >= 0xc5 && marker <= 0xc7) ||
+          (marker >= 0xc9 && marker <= 0xcb) ||
+          (marker >= 0xcd && marker <= 0xcf)
+        ) {
+          height = buffer.readUInt16BE(offset + 5);
+          width = buffer.readUInt16BE(offset + 7);
+          break;
+        }
+        const blockLength = buffer.readUInt16BE(offset + 2);
+        offset += 2 + blockLength;
+      }
+    }
+
+    if (width > 0 && height > 0) {
+      const ratio = width / height;
+      if (ratio >= 1.55) return '16:9';
+      if (ratio >= 1.18) return '4:3';
+      if (ratio >= 0.85) return '1:1';
+      if (ratio >= 0.62) return '3:4';
+      return '9:16';
+    }
+  } catch {
+    // Graceful fallback to undefined to let image models use source framing
   }
+  return undefined;
+}
+
+// Helper to determine if an API error is transient/temporary (503, 429, 5xx, high demand, overloaded)
+function isTemporaryError(err: any): boolean {
+  const status = err?.status || err?.code || err?.statusCode;
+  const message = String(err?.message || '').toLowerCase();
+  const statusStr = String(status || '').toLowerCase();
+
+  // Permanent client errors - do NOT retry
+  if (
+    status === 400 ||
+    status === 401 ||
+    status === 403 ||
+    status === 404 ||
+    message.includes('invalid argument') ||
+    message.includes('api key not valid') ||
+    message.includes('unauthenticated') ||
+    message.includes('permission denied')
+  ) {
+    return false;
+  }
+
+  // Temporary / transient errors - retry with backoff
+  if (
+    status === 429 ||
+    status === 500 ||
+    status === 502 ||
+    status === 503 ||
+    status === 504 ||
+    statusStr === 'unavailable' ||
+    statusStr === 'resource_exhausted' ||
+    message.includes('503') ||
+    message.includes('unavailable') ||
+    message.includes('high demand') ||
+    message.includes('resource_exhausted') ||
+    message.includes('overloaded') ||
+    message.includes('rate limit') ||
+    message.includes('quota') ||
+    message.includes('busy')
+  ) {
+    return true;
+  }
+
+  return true;
 }
 
 const ANALYSIS_SCHEMA = {
@@ -478,7 +550,34 @@ const TRANSFORM_SCHEMA = {
       properties: {
         environmentType: {
           type: Type.STRING,
-          description: 'Type of environment or object grouping, e.g. "Living Room TV Credenza", "Study Desk", "Bookshelf", "Kitchen Prep Island".',
+          description:
+            'Dynamic diagnosis of the environment or subject, e.g. "Messy Dressing Table", "Clothes Rack", "Bookshelf", "Living Room TV Showcase", "Study Desk", "Kitchen Prep Island", "Bedroom", "Balcony", "Storage Cabinet", etc.',
+        },
+        mainSubject: {
+          type: Type.STRING,
+          description: 'Primary focal subject or furniture identified in the scene.',
+        },
+        importantElements: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description:
+            'Elements that define the identity and structure of the scene (e.g. mirror frame, bed outline, shelf architecture, wall edges) that MUST be preserved.',
+        },
+        transformableElements: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description:
+            'Elements that can reasonably be rearranged, organized, restyled, cleaned, or improved according to user request.',
+        },
+        optionalElements: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description:
+            'Small decorative or clutter items (cables, loose cosmetics, paper piles) that can be modified, tucked, or removed.',
+        },
+        perspectiveAndLighting: {
+          type: Type.STRING,
+          description: 'Camera viewpoint, perspective angle, and primary lighting characteristics.',
         },
         detectedObjects: {
           type: Type.ARRAY,
@@ -519,6 +618,9 @@ const TRANSFORM_SCHEMA = {
       },
       required: [
         'environmentType',
+        'mainSubject',
+        'importantElements',
+        'transformableElements',
         'detectedObjects',
         'spatialRelationships',
         'preservedElements',
@@ -538,36 +640,187 @@ const TRANSFORM_SCHEMA = {
       type: Type.STRING,
       description: 'Any safety notice regarding heavy lifting, heat ventilation, or electrical cords.',
     },
-    visualRepresentationSvg: {
-      type: Type.STRING,
-      description:
-        'A complete, standalone, valid SVG string (width="800" height="600" viewBox="0 0 800 600") visually showing the proposed transformed result. Keep the room background colors, architectural walls, and primary furniture, but show the objects cleanly rearranged, aligned, and decluttered as planned with modern aesthetic styling, subtle gradients, and drop shadows.',
-    },
     suggestedFollowUps: {
       type: Type.ARRAY,
       items: { type: Type.STRING },
       description: '3 quick refinement prompts the user can try next.',
     },
   },
-  required: ['plan', 'whatChanged', 'why', 'visualRepresentationSvg'],
+  required: ['plan', 'whatChanged', 'why'],
 };
 
 const TRANSFORM_SYSTEM_INSTRUCTION = `You are LifeLens AI, an intelligent multimodal visual transformation assistant.
 Your tagline is: "See it. Understand it. Act on it."
 
 You are executing LifeLens V2: "Vision → Transform".
-The user uploads an image of a real-world space, room, desk, shelf, or object grouping and asks you to visually transform, rearrange, organize, improve, declutter, or redesign it.
+The user may upload ANY real-world image:
+- TV/showcase area
+- Clothes shelf or clothes rack
+- Messy dressing table
+- Bookshelf
+- Bedroom
+- Living room
+- Kitchen
+- Study table
+- Office desk
+- Storage cabinet
+- Wardrobe
+- Balcony
+- Workspace
+- Dining area
+- Any other room, furniture, or physical space
 
 Follow this strict transformation pipeline:
-1. UNDERSTAND: Identify visible objects, their positions, spatial relationships, and the overall environment.
-2. PRESERVE: Preserve important structural elements (walls, primary furniture, windows, room architecture) unless explicitly requested to alter them.
-3. PLAN: Formulate an intentional spatial plan that addresses the user's specific request (e.g. "Rearrange to be cleaner", "Make minimalist", "Organize the desk", "Keep flowers where they are").
-4. VISUALIZE: Generate a high-fidelity visual SVG representation (viewBox="0 0 800 600", width="800", height="600") of the transformed result. The visual SVG must:
-   - Match the overall color palette, wall/table surface tone, and structural background of the original space.
-   - Visibly show the rearranged, neatly aligned, decluttered, or balanced objects according to the plan.
-   - Use clean, modern SVG styling with subtle gradients and drop shadows for depth and realism.
-5. EXPLAIN: Clearly specify "What changed?" and "Why?" it improves the space.
-6. SAFETY & REALISM: Do not invent unrelated objects. Distinguish visible facts from inferences. For heavy items or electrical cables, include practical safety notices.`;
+1. UNDERSTAND THE SCENE DYNAMICALLY:
+   - Identify the main subject, furniture, architecture, room structure, camera viewpoint, perspective, and object positions.
+   - Do NOT assume the image is a TV showcase. Dynamically diagnose the actual scene.
+   - Classify visible elements into:
+     a) IMPORTANT ELEMENTS: Define the identity and structure of the scene (e.g. dressing table mirror, bed frame, bookshelf unit, wardrobe outline). Must be preserved!
+     b) TRANSFORMABLE ELEMENTS: Items that can reasonably be rearranged, organized, cleaned, restyled, or improved according to user request.
+     c) OPTIONAL ELEMENTS: Small accessories, cosmetics, paperwork, cables, or clutter that can be modified, tucked, or removed.
+2. PRESERVE THE ORIGINAL SCENE:
+   - The goal is: "Transform this real situation/space", NOT "Generate a completely different room".
+   - The result MUST be recognizably based on the original image: preserve overall layout, perspective, camera angle, room proportions, major furniture, and identity-defining objects.
+   - Never randomly replace the scene with an unrelated stock interior.
+3. USER REQUEST & CONSTRAINTS:
+   - The user's request dictates what changes (e.g. organization, decluttering, minimalism, luxury materials, aesthetic styling).
+   - If the user provides explicit constraints (e.g. "Keep the flowers where they are", "Don't change the TV", "Keep the mirror", "Don't move the desk"), strictly honor them across all versions!
+4. EXPLAIN: Clearly specify "What changed?" and "Why?" it improves the space.
+5. SAFETY & REALISM: Do not invent unrelated objects. Distinguish visible facts from inferences. For heavy items or electrical cables, include practical safety notices.`;
+
+const SUGGESTIONS_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    environmentType: {
+      type: Type.STRING,
+      description:
+        'Specific diagnosis of the environment or scene, e.g. "Messy Dressing Table", "Overgrown Garden Patio", "Open Clothes Rack", "Bookshelf Unit", "Living Room TV Showcase", "Kitchen Prep Island", "Study Desk", "Balcony", "Storage Cabinet", etc.',
+    },
+    mainSubject: {
+      type: Type.STRING,
+      description: 'The main focal subject, furniture piece, or area identified in the image.',
+    },
+    suggestions: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+      description:
+        '5 to 7 concise, highly realistic, actionable transformation prompts (under 12 words each) tailored specifically to THIS scene. Each must be a direct command.',
+    },
+  },
+  required: ['environmentType', 'mainSubject', 'suggestions'],
+};
+
+const SUGGESTIONS_SYSTEM_INSTRUCTION = `You are LifeLens AI, an intelligent multimodal visual transformation assistant.
+Your tagline is: "See it. Understand it. Act on it."
+
+You are analyzing an image uploaded by a user to provide 5 to 7 scene-aware, actionable transformation suggestions.
+The user may upload ANY real-world image:
+- Garden, patio, backyard, or outdoor space
+- Dressing table, vanity, cosmetics desk
+- Clothes rack, wardrobe, closet, garment rail
+- Bookshelf, library unit, display shelving
+- TV showcase, media console, entertainment center
+- Kitchen island, countertop, pantry
+- Bedroom, nightstand, bed area
+- Study table, home office desk, workbench
+- Dining area, coffee table, entryway
+- Any other room, furniture piece, or physical scene
+
+STRICT RULES:
+1. SCENE-AWARE RELEVANCE: Dynamically diagnose the EXACT scene shown. NEVER suggest desk or bookshelf organization if the image is a garden, clothes rack, or dressing table!
+2. ACTIONABLE & CONCISE: Each suggestion must be a direct, compelling command (under 12 words) that clearly states what to transform, rearrange, organize, declutter, or aesthetically improve.
+3. REALISTIC & PRACTICAL: Suggestions must be physically sensible and respectful of the scene's actual layout and objects.
+4. VARIETY: Provide 5 to 7 diverse prompts covering:
+   - Functional decluttering and clean organization
+   - Aesthetic/decorative refinement and styling
+   - Spatial openness and negative space
+   - Practical alignment, symmetry, or ergonomic arrangement
+   - Mood elevation (e.g. warm lighting, natural botanicals, minimalist serenity)`;
+
+// POST /api/transform/suggestions
+app.post('/api/transform/suggestions', async (req: Request, res: Response): Promise<void> => {
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+
+  try {
+    const { imageBase64, mimeType = 'image/jpeg' } = req.body;
+
+    if (!imageBase64) {
+      res.status(400).json({ error: 'Missing imageBase64 in request' });
+      return;
+    }
+
+    if (!process.env.GEMINI_API_KEY) {
+      res.status(500).json({
+        error: 'GEMINI_API_KEY is not configured on the server.',
+      });
+      return;
+    }
+
+    const cleanBase64 = imageBase64.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, '');
+    const validMime = mimeType === 'image/svg+xml' ? 'image/png' : mimeType;
+
+    const response = await generateContentWithRetry({
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            {
+              inlineData: {
+                mimeType: validMime,
+                data: cleanBase64,
+              },
+            },
+            {
+              text: 'Examine this scene closely. Identify the exact environment and subject, and generate 5 to 7 specific, actionable transformation prompts tailored exclusively to this real scene.',
+            },
+          ],
+        },
+      ],
+      config: {
+        systemInstruction: SUGGESTIONS_SYSTEM_INSTRUCTION,
+        responseMimeType: 'application/json',
+        responseSchema: SUGGESTIONS_SCHEMA,
+      },
+    });
+
+    const responseText = response.text;
+    if (!responseText) {
+      res.status(500).json({ error: 'No response from model' });
+      return;
+    }
+
+    const cleanJson = responseText.replace(/^```json\s*/, '').replace(/```\s*$/, '').trim();
+    const parsedData = JSON.parse(cleanJson);
+
+    res.json({
+      environmentType: parsedData.environmentType || 'Space',
+      mainSubject: parsedData.mainSubject || 'Main Subject',
+      suggestions: Array.isArray(parsedData.suggestions) && parsedData.suggestions.length > 0
+        ? parsedData.suggestions.slice(0, 7)
+        : [
+            'Rearrange the objects to make it cleaner and more balanced',
+            'Improve the decoration and aesthetic balance',
+            'Create a minimalist arrangement with maximum negative space',
+            'Remove visual clutter and organize essentials',
+            'Make the space look more spacious and open',
+          ],
+    });
+  } catch (err: any) {
+    console.error('Error generating suggestions:', err);
+    res.json({
+      environmentType: 'Scene',
+      mainSubject: 'Physical Space',
+      suggestions: [
+        'Rearrange the objects to make it cleaner and more balanced',
+        'Improve the decoration and aesthetic balance',
+        'Create a minimalist arrangement with maximum negative space',
+        'Remove visual clutter and organize essentials',
+        'Make the space look more spacious and open',
+      ],
+    });
+  }
+});
 
 // POST /api/transform
 app.post('/api/transform', async (req: Request, res: Response): Promise<void> => {
@@ -613,99 +866,231 @@ app.post('/api/transform', async (req: Request, res: Response): Promise<void> =>
     const currentVariation = VARIATION_DIRECTIONS[variationIdx];
     const activeVariationName = variationDirection || currentVariation.name;
 
-    let promptText = `Analyze this image and create a detailed visual transformation plan based on the user's request: "${userRequest}".
+    let promptText = `Analyze this uploaded image and create a detailed visual transformation plan based on the user's request: "${userRequest}".
 Target Variation: Version ${targetVersion} - "${activeVariationName}".
 Styling & Aesthetic Focus: ${currentVariation.aesthetic}.
-VARIATION INSTRUCTION: This is Version ${targetVersion}. Formulate a genuinely distinct spatial arrangement, lighting style, materials, and decorative composition that provides meaningful visual variety from other versions while remaining strictly faithful to the user's intent: "${userRequest}".`;
+CRITICAL INSTRUCTIONS:
+1. Identify the actual scene and main subject. Do NOT assume it is a TV showcase. (It could be a dressing table, clothes rack, bookshelf, desk, kitchen, bedroom, garden, or any other space).
+2. Classify visible items into IMPORTANT elements (preserve identity/structure), TRANSFORMABLE elements (rearrange/organize/restyle), and OPTIONAL elements (declutter/tuck).
+3. The result must be a realistic transformation of THIS actual space, preserving camera perspective, proportions, and key structural anchors.
+4. Formulate a genuinely distinct Version ${targetVersion} spatial arrangement and styling that provides meaningful visual variety from other versions while strictly faithful to: "${userRequest}".
+5. REQUEST-DRIVEN VISUAL SYNTHESIS: The generated visualRepresentationSvg MUST visibly and unmistakably portray the user's exact request ("${userRequest}") on this specific scene!
+   - If the user requested organization or alignment: show objects neatly sorted, aligned, and categorized.
+   - If the user requested improving decoration: show tasteful curated accents, ceramics, subtle botanical plants, or lighting.
+   - If the user requested minimalism or spaciousness: remove clutter, emphasize clean surfaces, and create open negative space.
+   - If the user requested garden improvements: show trimmed greenery, neat walking path, and arranged pots.
+   - If the user requested clothes rack organization: show color-coordinated clothing and uniform hangers.
+   - If the user requested dressing table organization: show makeup/skincare organized in trays or vanity stands.`;
 
     if (previousContext) {
       promptText += `\nPrior Version Context: The user previously requested: "${previousContext.userRequest}". Previous changes included: ${previousContext.previousWhatChanged?.slice(0, 3).join('; ') || 'prior arrangement'}. Preserve any explicitly requested constraints while offering this fresh Version ${targetVersion} interpretation.`;
     }
 
-    // Step A: Generate Structured Plan & Visual SVG Representation with Gemini Multimodal
-    const response = await generateContentWithRetry({
-      contents: [
-        {
-          role: 'user',
-          parts: [
-            {
-              inlineData: {
-                mimeType: validMime,
-                data: cleanBase64,
-              },
-            },
-            {
-              text: promptText,
-            },
-          ],
-        },
-      ],
-      config: {
-        systemInstruction: TRANSFORM_SYSTEM_INSTRUCTION,
-        responseMimeType: 'application/json',
-        responseSchema: TRANSFORM_SCHEMA,
-      },
-    });
-
-    const responseText = response.text;
-    if (!responseText) {
-      res.status(500).json({ error: 'No response text received from Gemini transformation model.' });
-      return;
-    }
-
-    const cleanJson = responseText.replace(/^```json\s*/, '').replace(/```\s*$/, '').trim();
-    const parsedData = JSON.parse(cleanJson);
-
-    // Format the visual result
-    let finalTransformedImage = '';
-    let renderMethod: 'ai-generated' | 'visual-synthesis' = 'visual-synthesis';
-
-    // Step B: Gemini image-generation / editing model (gemini-nano-banana-2.1)
+    // Step A: Generate Structured Plan with Gemini Multimodal
+    let parsedData: any = null;
     try {
-      const imgEditResponse = await ai.models.generateContent({
-        model: 'gemini-nano-banana-2.1',
-        contents: {
-          parts: [
-            {
-              inlineData: {
-                mimeType: validMime,
-                data: cleanBase64,
+      const response = await generateContentWithRetry({
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                inlineData: {
+                  mimeType: validMime,
+                  data: cleanBase64,
+                },
               },
-            },
-            {
-              text: `Transform this showcase into a stylish, modern showcase. Style: Version ${targetVersion} (${activeVariationName}: ${currentVariation.aesthetic}). Fulfill user request: "${userRequest}". Concrete plan: ${parsedData.whatChanged?.join('; ') || userRequest}.`,
-            },
-          ],
-        },
-        config: {
-          imageConfig: {
-            aspectRatio: '4:3',
-            imageSize: '1K',
+              {
+                text: promptText,
+              },
+            ],
           },
+        ],
+        config: {
+          systemInstruction: TRANSFORM_SYSTEM_INSTRUCTION,
+          responseMimeType: 'application/json',
+          responseSchema: TRANSFORM_SCHEMA,
         },
       });
 
-      for (const part of imgEditResponse.candidates?.[0]?.content?.parts || []) {
-        if (part.inlineData?.data) {
-          finalTransformedImage = `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
-          renderMethod = 'ai-generated';
-          break;
+      const responseText = response.text;
+      if (responseText) {
+        const cleanJson = responseText.replace(/^```json\s*/, '').replace(/```\s*$/, '').trim();
+        parsedData = JSON.parse(cleanJson);
+      }
+    } catch (stepAErr: any) {
+      console.warn('Step A multimodal planning encountered temporary issue (will proceed with image transformation):', stepAErr?.message || stepAErr);
+    }
+
+    if (!parsedData || !parsedData.plan) {
+      parsedData = {
+        plan: {
+          environmentType: 'Scene',
+          mainSubject: 'Main Subject',
+          importantElements: ['room architecture', 'major furniture', 'main structural walls'],
+          transformableElements: ['visible objects', 'clutter', 'decorations', 'accessories'],
+          preservedElements: ['original room architecture', 'major furniture'],
+          rearrangedObjects: [],
+        },
+        whatChanged: [userRequest],
+        why: 'Optimized and transformed cleanly according to your request.',
+        suggestedFollowUps: ['Make it more minimal', 'Group small items onto a tray', 'Add subtle lighting'],
+      };
+    }
+
+    // Detect aspect ratio from original image buffer to preserve exact framing
+    const imageBuffer = Buffer.from(cleanBase64, 'base64');
+    const detectedAspectRatio = detectImageAspectRatio(imageBuffer);
+
+    const sceneType = parsedData.plan?.environmentType || 'space';
+    const mainFocal = parsedData.plan?.mainSubject || sceneType;
+    const importantAnchors = (parsedData.plan?.importantElements || parsedData.plan?.preservedElements || []).join(', ');
+    const transformItems = (parsedData.plan?.transformableElements || []).join(', ');
+
+    const dynamicImgPrompt = `Edit the provided image according to the user's request. This is an image-to-image transformation, not a new scene generation.
+
+Change ONLY the elements necessary to satisfy the user's request: "${userRequest}".
+
+Preserve the exact original camera viewpoint, framing, perspective, scene boundaries, architecture, major furniture, main subject, important objects, materials and overall spatial identity unless the user explicitly asks to change them.
+Important anchors to preserve: ${importantAnchors || 'room architecture, major furniture, and main structural subject'}.
+
+Do not remove, replace, resize, relocate, or invent important elements unless required by the user's request.
+
+Keep all unrequested areas as visually unchanged as possible.
+
+The final result must be immediately recognizable as the SAME original image/scene, realistically transformed according to the user's request.
+
+If the user asks for organization, decoration, decluttering, or rearrangement, modify only the relevant objects while preserving the original room and major elements.
+Transformable elements to modify/rearrange: ${transformItems || 'visible objects, clutter, decoration, and accessories'}.
+Specific planned changes: ${parsedData.whatChanged?.join('; ') || userRequest}.
+
+Version variation: Version ${targetVersion} styling theme: "${activeVariationName}" (${currentVariation.aesthetic}). Version variation may change styling only within the requested transformation. It must NEVER override preservation of the original scene.`;
+
+    // Step B: Gemini image-generation / editing models in required priority order:
+    // Primary: gemini-nano-banana-2.1
+    // Fallback: gemini-3.1-flash-image
+    let finalTransformedImage = '';
+    let renderMethod: 'ai-generated' = 'ai-generated';
+    let lastImageError: any = null;
+
+    const imageModels = [
+      'gemini-nano-banana-2.1',
+      'gemini-3.1-flash-image',
+    ];
+
+    const retryDelaysMs = [2000, 4000, 8000];
+
+    modelLoop: for (const imgModel of imageModels) {
+      console.log(`Starting image transformation with model: ${imgModel}`);
+
+      for (let attempt = 0; attempt <= retryDelaysMs.length; attempt++) {
+        try {
+          const config: any = {
+            responseModalities: ['IMAGE'],
+            imageConfig: {
+              imageSize: '1K',
+              ...(detectedAspectRatio ? { aspectRatio: detectedAspectRatio } : {}),
+            },
+          };
+
+          let imgEditResponse;
+          try {
+            imgEditResponse = await ai.models.generateContent({
+              model: imgModel,
+              contents: {
+                parts: [
+                  {
+                    inlineData: {
+                      mimeType: validMime,
+                      data: cleanBase64,
+                    },
+                  },
+                  {
+                    text: dynamicImgPrompt,
+                  },
+                ],
+              },
+              config,
+            });
+          } catch (modelCallErr: any) {
+            // If imageSize is unsupported or returns INVALID_ARGUMENT, retry without imageSize
+            if (
+              modelCallErr?.message?.includes('imageSize') ||
+              modelCallErr?.message?.includes('INVALID_ARGUMENT') ||
+              modelCallErr?.status === 400
+            ) {
+              imgEditResponse = await ai.models.generateContent({
+                model: imgModel,
+                contents: {
+                  parts: [
+                    {
+                      inlineData: {
+                        mimeType: validMime,
+                        data: cleanBase64,
+                      },
+                    },
+                    {
+                      text: dynamicImgPrompt,
+                    },
+                  ],
+                },
+                config: {
+                  responseModalities: ['IMAGE'],
+                  ...(detectedAspectRatio ? { imageConfig: { aspectRatio: detectedAspectRatio } } : {}),
+                },
+              });
+            } else {
+              throw modelCallErr;
+            }
+          }
+
+          if (imgEditResponse?.candidates) {
+            for (const candidate of imgEditResponse.candidates) {
+              for (const part of candidate.content?.parts || []) {
+                if (part.inlineData?.data && part.inlineData.data.trim().length > 50) {
+                  const mime = part.inlineData.mimeType || 'image/png';
+                  finalTransformedImage = `data:${mime};base64,${part.inlineData.data}`;
+                  renderMethod = 'ai-generated';
+                  break;
+                }
+              }
+              if (finalTransformedImage) break;
+            }
+          }
+
+          if (finalTransformedImage) {
+            console.log(`Successfully generated transformed image with ${imgModel} on attempt ${attempt + 1}`);
+            break modelLoop;
+          }
+        } catch (err: any) {
+          lastImageError = err;
+          console.warn(`Model ${imgModel} (attempt ${attempt + 1}) encountered error:`, err?.message || err);
+
+          // If error is permanent (400, 401, 403, 404, invalid key), don't retry this model
+          if (!isTemporaryError(err)) {
+            console.warn(`Non-retryable error on ${imgModel}:`, err?.message || err);
+            break;
+          }
+
+          // If we haven't exhausted our retry delays, wait and retry
+          if (attempt < retryDelaysMs.length) {
+            const waitMs = retryDelaysMs[attempt];
+            console.log(`Temporary error on ${imgModel}. Waiting ${waitMs}ms before attempt ${attempt + 2}...`);
+            await new Promise((resolve) => setTimeout(resolve, waitMs));
+          } else {
+            console.warn(`Exhausted retries on ${imgModel}, checking fallback model...`);
+          }
         }
       }
-    } catch {
-      // Graceful fallback when paid model quota is not active
     }
 
-    // Step C: Deliver high-fidelity AI-generated showcase transformation matching the requested version
-    if (!finalTransformedImage && CACHED_SHOWCASE_AI_IMAGES[currentVariation.version]) {
-      finalTransformedImage = CACHED_SHOWCASE_AI_IMAGES[currentVariation.version];
-      renderMethod = 'ai-generated';
-    }
-
-    // Secondary fallback: Visual SVG representation if needed
-    if (!finalTransformedImage && parsedData.visualRepresentationSvg) {
-      finalTransformedImage = `data:image/svg+xml;utf8,${encodeURIComponent(parsedData.visualRepresentationSvg)}`;
-      renderMethod = 'visual-synthesis';
+    // Step C: Strict validation - do NOT fall back to SVG, cached assets, or original image
+    if (!finalTransformedImage || finalTransformedImage.length < 50) {
+      console.error('All image-generation attempts failed:', lastImageError?.message || lastImageError);
+      res.status(503).json({
+        error: "Image transformation is temporarily unavailable. Gemini's image service is busy. Please try again in a few seconds.",
+      });
+      return;
     }
 
     const transformationResult = {
@@ -733,8 +1118,8 @@ VARIATION INSTRUCTION: This is Version ${targetVersion}. Formulate a genuinely d
     res.json(transformationResult);
   } catch (err: any) {
     console.error('Error during transformation:', err);
-    res.status(500).json({
-      error: err?.message || 'Failed to generate visual transformation. Please try again.',
+    res.status(503).json({
+      error: "Image transformation is temporarily unavailable. Gemini's image service is busy. Please try again in a few seconds.",
     });
   }
 });

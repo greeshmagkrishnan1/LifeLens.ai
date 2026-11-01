@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Wand2,
   Sparkles,
@@ -9,45 +9,102 @@ import {
   Layers,
   ChevronDown,
   ChevronUp,
+  ChevronLeft,
+  ChevronRight,
   CheckCircle2,
+  Check,
   HelpCircle,
   Eye,
   Sliders,
   Send,
   SlidersHorizontal,
+  History,
+  Boxes,
+  Camera,
 } from 'lucide-react';
 import { TransformationResult } from '../types/analysis';
 import { ImageComparison } from './ImageComparison';
+import { AnalysisService } from '../services/api';
 
 interface TransformViewProps {
   originalImage: string;
   transformationResult: TransformationResult | null;
+  history?: TransformationResult[];
+  activeVersionIndex?: number;
+  onSelectVersion?: (index: number) => void;
   isLoading: boolean;
   onTransform: (userRequest: string, isRefinement?: boolean, isNextVersion?: boolean) => void;
   onReset: () => void;
   loadingPhase?: string;
 }
 
-const SUGGESTED_TRANSFORMATIONS = [
-  'Rearrange the objects to make it cleaner and more balanced',
-  'Make the room look cleaner and more organized',
-  'Organize the desk with clean cable management',
-  'Improve the decoration and aesthetic balance',
-  'Make the bookshelf more organized with breathing room',
-  'Create a minimalist arrangement with maximum negative space',
-  'Improve the layout for better ergonomics and flow',
-  'Remove visual clutter and unnecessary items',
-  'Make the space look more spacious and open',
-];
-
 export const TransformView: React.FC<TransformViewProps> = ({
   originalImage,
   transformationResult,
+  history = [],
+  activeVersionIndex = 0,
+  onSelectVersion,
   isLoading,
   onTransform,
   onReset,
 }) => {
   const [userRequestInput, setUserRequestInput] = useState<string>('');
+  const [dynamicSuggestions, setDynamicSuggestions] = useState<string[]>([]);
+  const [isSuggestionsLoading, setIsSuggestionsLoading] = useState<boolean>(false);
+  const [detectedEnvironment, setDetectedEnvironment] = useState<string>('');
+  const lastFetchedImageRef = useRef<string | null>(null);
+  const historyScrollRef = useRef<HTMLDivElement>(null);
+
+  // Dynamically analyze uploaded scene and fetch 5-7 customized transformation suggestions
+  useEffect(() => {
+    let isMounted = true;
+    if (!originalImage) return;
+
+    if (lastFetchedImageRef.current === originalImage) return;
+    lastFetchedImageRef.current = originalImage;
+
+    const fetchSuggestions = async () => {
+      setIsSuggestionsLoading(true);
+      try {
+        const res = await AnalysisService.getTransformSuggestions({
+          imageBase64: originalImage,
+        });
+        if (isMounted && res.suggestions && res.suggestions.length > 0) {
+          setDynamicSuggestions(res.suggestions);
+          setDetectedEnvironment(res.environmentType || '');
+        }
+      } catch (err) {
+        console.warn('Failed to load scene-aware suggestions, falling back:', err);
+        if (isMounted) {
+          setDynamicSuggestions([
+            'Rearrange the objects to make it cleaner and more balanced',
+            'Improve the decoration and aesthetic balance',
+            'Create a minimalist arrangement with maximum negative space',
+            'Remove visual clutter and organize essentials',
+            'Make the space look more spacious and open',
+          ]);
+        }
+      } finally {
+        if (isMounted) {
+          setIsSuggestionsLoading(false);
+        }
+      }
+    };
+
+    fetchSuggestions();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [originalImage]);
+
+
+  const scrollHistory = (direction: 'left' | 'right') => {
+    if (historyScrollRef.current) {
+      const scrollAmount = direction === 'left' ? -260 : 260;
+      historyScrollRef.current.scrollBy({ left: scrollAmount, behavior: 'smooth' });
+    }
+  };
   const [refinementInput, setRefinementInput] = useState<string>('');
   const [showPlanDetails, setShowPlanDetails] = useState<boolean>(false);
 
@@ -147,23 +204,55 @@ export const TransformView: React.FC<TransformViewProps> = ({
                 </div>
               </form>
 
-              {/* Suggested Transformation Chips */}
+              {/* Scene-Aware Dynamic Transformation Suggestions */}
               <div className="pt-2">
-                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-2">
-                  Popular Transformation Prompts:
-                </span>
-                <div className="flex flex-wrap gap-1.5">
-                  {SUGGESTED_TRANSFORMATIONS.map((chip, idx) => (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={() => handleSelectChip(chip)}
-                      className="px-2.5 py-1.5 rounded-xl bg-slate-800/70 hover:bg-slate-700 text-slate-300 hover:text-white text-xs border border-slate-700/60 hover:border-violet-500/40 transition-colors text-left"
-                    >
-                      {chip}
-                    </button>
-                  ))}
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center space-x-1.5 text-[11px] font-semibold text-slate-300 uppercase tracking-wider">
+                    <Sparkles className="w-3.5 h-3.5 text-violet-400" />
+                    <span>Scene-Aware Suggestions</span>
+                    {detectedEnvironment && (
+                      <span className="text-[10px] normal-case font-medium px-2 py-0.5 rounded-full bg-violet-950/80 text-violet-300 border border-violet-800/50">
+                        {detectedEnvironment}
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[10px] text-slate-500 hidden sm:inline">
+                    Click to transform immediately
+                  </span>
                 </div>
+
+                {isSuggestionsLoading ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center space-x-2 text-xs text-violet-300">
+                      <Sparkles className="w-3 h-3 text-violet-400 animate-spin" />
+                      <span>Analyzing scene to generate customized transformation prompts...</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {[130, 170, 140, 190, 150].map((width, idx) => (
+                        <div
+                          key={idx}
+                          className="h-8 rounded-xl bg-slate-800/70 border border-slate-700/60 animate-pulse"
+                          style={{ width: `${width}px` }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-1.5">
+                    {dynamicSuggestions.map((chip, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => handleSelectChip(chip)}
+                        disabled={isLoading}
+                        className="px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-violet-950/70 text-slate-200 hover:text-white text-xs border border-slate-700/70 hover:border-violet-500/50 transition-all text-left flex items-center space-x-1.5 cursor-pointer group active:scale-95 disabled:opacity-50"
+                      >
+                        <Wand2 className="w-3 h-3 text-violet-400 group-hover:text-violet-300 shrink-0" />
+                        <span>{chip}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -277,6 +366,188 @@ export const TransformView: React.FC<TransformViewProps> = ({
                     : 'PROPOSED TRANSFORMATION'
                 }
               />
+            </div>
+
+            {/* Transformation Version History Carousel */}
+            {history && history.length > 0 && (
+              <div className="mt-6 pt-5 border-t border-slate-800">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-7 h-7 rounded-lg bg-violet-500/15 border border-violet-500/30 text-violet-400 flex items-center justify-center">
+                      <History className="w-3.5 h-3.5" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                        <span>Transformation History</span>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-medium border border-slate-700">
+                          {history.length} {history.length === 1 ? 'version' : 'versions'}
+                        </span>
+                      </h4>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center space-x-2">
+                    <span className="text-[11px] text-slate-400 hidden sm:inline mr-2">
+                      Click any version to view without regenerating
+                    </span>
+                    {history.length > 3 && (
+                      <div className="flex items-center space-x-1">
+                        <button
+                          type="button"
+                          onClick={() => scrollHistory('left')}
+                          className="p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors cursor-pointer"
+                          title="Scroll left"
+                        >
+                          <ChevronLeft className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => scrollHistory('right')}
+                          className="p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors cursor-pointer"
+                          title="Scroll right"
+                        >
+                          <ChevronRight className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Horizontal scrollable version cards */}
+                <div className="relative">
+                  <div
+                    ref={historyScrollRef}
+                    className="flex items-stretch gap-3 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent scroll-smooth focus:outline-none"
+                  >
+                    {history.map((ver, idx) => {
+                      const isSelected = activeVersionIndex === idx;
+                      const verNumber = ver.version || idx + 1;
+
+                      return (
+                        <button
+                          key={ver.id || `v-${idx}`}
+                          type="button"
+                          onClick={() => onSelectVersion && onSelectVersion(idx)}
+                          className={`shrink-0 w-36 sm:w-44 p-2 rounded-2xl border text-left transition-all duration-200 cursor-pointer flex flex-col justify-between group ${
+                            isSelected
+                              ? 'bg-violet-950/40 border-violet-500 ring-2 ring-violet-500/50 shadow-lg shadow-violet-500/10'
+                              : 'bg-slate-950/60 border-slate-800/90 hover:border-slate-700 hover:bg-slate-900/60 opacity-80 hover:opacity-100'
+                          }`}
+                        >
+                          {/* Thumbnail */}
+                          <div className="relative aspect-4/3 rounded-xl overflow-hidden bg-black mb-2 border border-slate-800/80">
+                            <img
+                              src={ver.transformedImage}
+                              alt={`Version ${verNumber}`}
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                              loading="lazy"
+                            />
+                            <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded-md bg-slate-950/85 backdrop-blur-md text-[10px] font-bold text-white border border-slate-700 flex items-center space-x-1">
+                              <span>V{verNumber}</span>
+                            </div>
+                            {isSelected && (
+                              <div className="absolute top-1.5 right-1.5 px-1.5 py-0.5 rounded-md bg-violet-600 text-[9px] font-extrabold text-white flex items-center space-x-0.5 shadow-sm">
+                                <Check className="w-2.5 h-2.5" />
+                                <span>ACTIVE</span>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Version Metadata */}
+                          <div className="space-y-0.5 px-1">
+                            <div className="flex items-center justify-between">
+                              <span className={`text-xs font-bold ${isSelected ? 'text-violet-300' : 'text-slate-200'}`}>
+                                Version {verNumber}
+                              </span>
+                              <span className="text-[10px] text-slate-500">
+                                {new Date(ver.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-slate-400 line-clamp-1">
+                              {ver.variationDirection || ver.plan?.environmentType || 'Variation'}
+                            </p>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Scene Intelligence & Classified Elements */}
+          <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-6 sm:p-7 backdrop-blur-sm space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="w-8 h-8 rounded-xl bg-violet-500/10 border border-violet-500/30 text-violet-400 flex items-center justify-center">
+                  <Boxes className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Scene Intelligence & Classified Elements</h3>
+                  <p className="text-xs text-slate-400">
+                    How LifeLens understood "{transformationResult.plan.mainSubject || transformationResult.plan.environmentType}"
+                  </p>
+                </div>
+              </div>
+              <span className="hidden sm:inline-flex px-3 py-1 rounded-full text-xs font-medium bg-slate-800 text-slate-300 border border-slate-700">
+                {transformationResult.plan.environmentType}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 pt-1">
+              {/* Important Elements (Preserved) */}
+              <div className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800/90 space-y-2">
+                <div className="flex items-center space-x-2 text-emerald-400 text-xs font-bold uppercase tracking-wider">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>Important Elements</span>
+                </div>
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  Defines scene structure and identity; preserved faithfully:
+                </p>
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {(transformationResult.plan.importantElements || transformationResult.preservedElements).map((el, i) => (
+                    <span key={i} className="px-2 py-0.5 rounded-md bg-emerald-950/40 border border-emerald-800/50 text-emerald-300 text-xs font-medium">
+                      ✓ {el}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {/* Transformable Elements */}
+              <div className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800/90 space-y-2">
+                <div className="flex items-center space-x-2 text-violet-400 text-xs font-bold uppercase tracking-wider">
+                  <Wand2 className="w-3.5 h-3.5" />
+                  <span>Transformable Elements</span>
+                </div>
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  Rearranged, cleaned, styled, and aligned per user request:
+                </p>
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {(transformationResult.plan.transformableElements || transformationResult.plan.detectedObjects.slice(0, 4)).map((el, i) => (
+                    <span key={i} className="px-2 py-0.5 rounded-md bg-violet-950/40 border border-violet-800/50 text-violet-300 text-xs font-medium">
+                      ⇄ {el}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {/* Optional Elements */}
+              <div className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800/90 space-y-2">
+                <div className="flex items-center space-x-2 text-cyan-400 text-xs font-bold uppercase tracking-wider">
+                  <Eye className="w-3.5 h-3.5" />
+                  <span>Perspective & Balance</span>
+                </div>
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  {transformationResult.plan.perspectiveAndLighting || 'Camera viewpoint, wall proportions, and surface tones preserved.'}
+                </p>
+                <div className="pt-1 text-[11px] text-slate-300">
+                  <span className="text-slate-500 font-semibold uppercase text-[10px] block">Optional / Clutter:</span>
+                  <p className="italic text-slate-400 mt-0.5">
+                    {transformationResult.plan.optionalElements?.join(', ') || 'Loose accessories, cables, and unneeded clutter neatly organized.'}
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
 

@@ -101,6 +101,11 @@ export interface SpatialObject {
 
 export interface TransformationPlan {
   environmentType: string;
+  mainSubject?: string;
+  importantElements?: string[]; // Defines identity and structure of the scene to preserve
+  transformableElements?: string[]; // Things to rearrange, restyle, organize, or improve
+  optionalElements?: string[]; // Small decor or clutter items
+  perspectiveAndLighting?: string;
   detectedObjects: string[];
   spatialRelationships: string;
   preservedElements: string[];
@@ -123,6 +128,23 @@ export interface TransformationResult {
   preservedElements: string[];
   suggestedFollowUps?: string[];
   disclaimer: string;
+}
+
+export interface TransformationHistoryItem {
+  id: string;
+  version: number;
+  variationDirection?: string;
+  transformedImage: string;
+  timestamp: number;
+  result: TransformationResult;
+}
+
+export interface TransformationSession {
+  originalImage: string;
+  originalUserRequest: string;
+  explicitUserConstraints?: string[];
+  generatedVersions: TransformationHistoryItem[];
+  currentVersionIndex: number;
 }
 
 export interface TransformPreset {
